@@ -31,7 +31,7 @@ def bot_command(command_handler):
 
 def initialize_sheets_service():
     creds = ServiceAccountCredentials.from_json_keyfile_name(
-        'creds.json',
+        'credentials.json',
         ['https://www.googleapis.com/auth/spreadsheets',
          'https://www.googleapis.com/auth/drive',
          'https://spreadsheets.google.com/feeds'])
@@ -61,7 +61,7 @@ def create_memoized_get(update_message, update, update_time=5):
 
 get_answers = create_memoized_get(
     "Updating answers from google spreadsheet",
-    lambda service: service.open('Кланик бот').sheet1.col_values(1)
+    lambda: gsheets_service.open_by_key(spreadsheet_id).sheet1.col_values(1)
 )
 
 get_todd_etot_sticker_set = create_memoized_get(
@@ -88,7 +88,7 @@ def make_message_handler(*reply_functions):
 
 
 def random_message_from_gspread(*args):
-    return [("reply_text", random.choice(get_answers(gsheets_service)))]
+    return [("reply_text", random.choice(get_answers()))]
 
 
 random_message_handler = make_message_handler(random_message_from_gspread)
@@ -117,12 +117,20 @@ klan_message_handler = random_reply(
 )
 
 
+gsheets_service: gspread.Client = None
+spreadsheet_id = None
+
+
 def main():
     logging.info("Starting bot")
 
     logging.info("Initializing gsheets_service...")
     global gsheets_service
     gsheets_service = initialize_sheets_service()
+
+    global spreadsheet_id
+    with open("spreadsheet_id.txt") as f:
+        spreadsheet_id = f.read()
 
     logging.info("Initializing bot...")
     with open("bot_token.txt") as f:
