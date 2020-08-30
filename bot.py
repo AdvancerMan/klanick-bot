@@ -73,16 +73,20 @@ get_todd_etot_sticker_set = create_memoized_get(
 
 def make_message_handler(*reply_functions):
     def handle(update: telegram.Update, context: telegram.ext.CallbackContext):
-        message = update.message.text
+        message = update.effective_message
+        if message is None:
+            return
 
-        logging.info("Message: %s" % message)
+        message_text = message.text
+
+        logging.info("Message: %s" % message_text)
         replies = [reply
                    for f in reply_functions
-                   for reply in f(update, context, message)]
+                   for reply in f(update, context, message_text)]
         logging.info("Replies: %s" % replies)
 
         for reply in replies:
-            update.message.__getattribute__(reply[0])(*reply[1:])
+            message.__getattribute__(reply[0])(*reply[1:])
 
     return handle
 
@@ -105,15 +109,19 @@ random_sticker_handler = make_message_handler(random_todd_etot_sticker)
 def random_reply(*reply_functions_and_probas):
     reply_functions = [pair[0] for pair in reply_functions_and_probas]
     probas = [pair[1] for pair in reply_functions_and_probas]
-    return make_message_handler(
-        lambda update, context, message:
-        random.choices(reply_functions, probas)[0](update, context, message)
-    )
+    return make_message_handler(*random.choices(reply_functions, probas)[0])
 
 
 klan_message_handler = random_reply(
-    (random_message_from_gspread, 95),
-    (random_todd_etot_sticker, 5),
+    ([random_message_from_gspread], 90),
+    ([random_todd_etot_sticker], 5),
+    ([random_message_from_gspread, random_todd_etot_sticker], 5),
+)
+
+
+edited_message_handler = make_message_handler(
+    lambda update, context, message:
+    update.effective_message.reply_text("Я все вииииижууууууу")
 )
 
 
@@ -160,7 +168,11 @@ def main():
         telegram.ext.CommandHandler("sticker", random_sticker_handler))
 
     dp.add_handler(telegram.ext.MessageHandler(
-        telegram.ext.Filters.all & ~telegram.ext.Filters.command,
+        telegram.ext.Filters.update.edited_message,
+        edited_message_handler))
+
+    dp.add_handler(telegram.ext.MessageHandler(
+        telegram.ext.Filters.all & ~telegram.ext.Filters.command & ~telegram.ext.Filters.update.edited_message,
         klan_message_handler))
 
     updater.start_polling()
