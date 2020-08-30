@@ -5,24 +5,30 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 
-def create_memoized_get(update_message, update, update_time):
-    last_update = None
-    answer = None
+def memoized(load_period, load_log_message=None):
+    def wrapper(load_resource):
+        nonlocal load_log_message
 
-    def memoized_get(*args, **kwargs):
-        nonlocal last_update, answer
+        last_load = None
+        resource = None
+        if load_log_message is None:
+            load_log_message = f"Invoking memoized function %s" \
+                               % load_resource.__name__
 
-        now = time.time()
-        since_last_update = now - last_update \
-            if last_update is not None else update_time
+        def memoized_load(*args, **kwargs):
+            nonlocal last_load, resource
 
-        if since_last_update >= update_time:
-            logging.info(update_message)
-            last_update = now
-            answer = update(*args, **kwargs)
-        return answer
+            now = time.time()
+            since_last_load = now - last_load \
+                if last_load is not None else load_period
 
-    return memoized_get
+            if since_last_load >= load_period:
+                logging.info(load_log_message)
+                last_load = now
+                resource = load_resource(*args, **kwargs)
+            return resource
+        return memoized_load
+    return wrapper
 
 
 def initialize_sheets_service():
@@ -35,15 +41,16 @@ def initialize_sheets_service():
     return gspread.authorize(credentials)
 
 
-get_answers = create_memoized_get(
-    "Updating answers from google spreadsheet",
-    lambda gsheets_service, spreadsheet_id:
-    gsheets_service.open_by_key(spreadsheet_id).sheet1.col_values(1),
-    30
-)
+@memoized(30, "Loading answers from google spreadsheet")
+def load_answers(gsheets_service, spreadsheet_id):
+    return gsheets_service.open_by_key(spreadsheet_id).sheet1.col_values(1)
 
-get_todd_etot_sticker_set = create_memoized_get(
-    "Updating sticker set",
-    lambda bot: bot.getStickerSet("ToddEtot"),
-    60
-)
+
+def create_sticker_set_loader(name):
+    @memoized(60, "Loading %s sticker set" % name)
+    def load_sticker_set(bot):
+        return bot.getStickerSet(name)
+    return load_sticker_set
+
+
+load_todd_etot_sticker_set = create_sticker_set_loader("ToddEtot")
