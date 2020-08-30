@@ -23,7 +23,9 @@ def bot_command(command_handler, comand_name):
 def help_command(update: telegram.Update, context):
     update.message.reply_markdown(os.linesep.join(s.lstrip() for s in f"""
         [Код клана](https://github.com/AdvancerMan/klanick-bot)
-        [Гугл таблица](https://docs.google.com/spreadsheets/d/{spreadsheet_id})
+        [Гугл таблица](https://docs.google.com/spreadsheets/d/{
+            context.bot_data["spreadsheet_id"]
+        })
 
         Клан умеет исполнять следующие команды:
 
