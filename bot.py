@@ -20,26 +20,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def bot_command(command_handler):
+def bot_command(command_handler, comand_name):
     def wrapper(update: telegram.Update, context: telegram.ext.CallbackContext):
-        logger.info(
-            "Handling a command with function %s" % command_handler.__name__)
+        logger.info("Handling /%s command" % comand_name)
         command_handler(update, context)
 
     return wrapper
 
 
 def initialize_sheets_service():
-    creds = ServiceAccountCredentials.from_json_keyfile_name(
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(
         'credentials.json',
         ['https://www.googleapis.com/auth/spreadsheets',
          'https://www.googleapis.com/auth/drive',
          'https://spreadsheets.google.com/feeds'])
 
-    return gspread.authorize(creds)
+    return gspread.authorize(credentials)
 
 
-def create_memoized_get(update_message, update, update_time=5):
+def create_memoized_get(update_message, update, update_time):
     last_update = None
     answer = None
 
@@ -61,7 +60,8 @@ def create_memoized_get(update_message, update, update_time=5):
 
 get_answers = create_memoized_get(
     "Updating answers from google spreadsheet",
-    lambda: gsheets_service.open_by_key(spreadsheet_id).sheet1.col_values(1)
+    lambda: gsheets_service.open_by_key(spreadsheet_id).sheet1.col_values(1),
+    30
 )
 
 get_todd_etot_sticker_set = create_memoized_get(
@@ -69,6 +69,10 @@ get_todd_etot_sticker_set = create_memoized_get(
     lambda bot: bot.getStickerSet("ToddEtot"),
     60
 )
+
+
+def invoke_and_join(functions, *args, **kwargs):
+    return [result for f in functions for result in f(*args, **kwargs)]
 
 
 def make_message_handler(*reply_functions):
@@ -80,9 +84,7 @@ def make_message_handler(*reply_functions):
         message_text = message.text
 
         logging.info("Message: %s" % message_text)
-        replies = [reply
-                   for f in reply_functions
-                   for reply in f(update, context, message_text)]
+        replies = invoke_and_join(reply_functions, update, context, message_text)
         logging.info("Replies: %s" % replies)
 
         for reply in replies:
@@ -109,7 +111,11 @@ random_sticker_handler = make_message_handler(random_todd_etot_sticker)
 def random_reply(*reply_functions_and_probas):
     reply_functions = [pair[0] for pair in reply_functions_and_probas]
     probas = [pair[1] for pair in reply_functions_and_probas]
-    return make_message_handler(*random.choices(reply_functions, probas)[0])
+    return make_message_handler(
+        lambda update, context, message:
+        invoke_and_join(random.choices(reply_functions, probas)[0],
+                        update, context, message)
+    )
 
 
 klan_message_handler = random_reply(
@@ -118,12 +124,9 @@ klan_message_handler = random_reply(
     ([random_message_from_gspread, random_todd_etot_sticker], 5),
 )
 
-
 edited_message_handler = make_message_handler(
-    lambda update, context, message:
-    update.effective_message.reply_text("Я все вииииижууууууу")
+    lambda *_: [("reply_text", "Я все вииииижууууууу")]
 )
-
 
 gsheets_service: gspread.Client = None
 spreadsheet_id = None
@@ -146,12 +149,11 @@ def main():
 
     dp: telegram.ext.Dispatcher = updater.dispatcher
 
-    @bot_command
     def help_command(update: telegram.Update, context):
-        update.message.reply_text(os.linesep.join(s.lstrip() for s in """
-            Код клана можно найти по ссылке
-            https://github.com/AdvancerMan/klanick-bot 
-            
+        update.message.reply_markdown(os.linesep.join(s.lstrip() for s in f"""
+            [Код клана](https://github.com/AdvancerMan/klanick-bot)
+            [Гугл таблица](https://docs.google.com/spreadsheets/d/{spreadsheet_id})
+
             Клан умеет исполнять следующие команды:
             
             /help -- выводит данное описание команд
@@ -160,19 +162,24 @@ def main():
             /sticker -- клан отвечает рандомным стикером из стикерпака "Тодд Этот"
         """.splitlines()))
 
-    dp.add_handler(telegram.ext.CommandHandler("help", help_command))
-    dp.add_handler(telegram.ext.CommandHandler("klan", klan_message_handler))
-    dp.add_handler(
-        telegram.ext.CommandHandler("random", random_message_handler))
-    dp.add_handler(
-        telegram.ext.CommandHandler("sticker", random_sticker_handler))
+    commandHandlers = [
+        ("help", help_command),
+        ("klan", klan_message_handler),
+        ("random", random_message_handler),
+        ("sticker", random_sticker_handler)
+    ]
+
+    for command, callback in commandHandlers:
+        dp.add_handler(telegram.ext.CommandHandler(
+            command, bot_command(callback, command)))
 
     dp.add_handler(telegram.ext.MessageHandler(
         telegram.ext.Filters.update.edited_message,
         edited_message_handler))
 
     dp.add_handler(telegram.ext.MessageHandler(
-        telegram.ext.Filters.all & ~telegram.ext.Filters.command & ~telegram.ext.Filters.update.edited_message,
+        telegram.ext.Filters.all & ~telegram.ext.Filters.command
+        & ~telegram.ext.Filters.update.edited_message,
         klan_message_handler))
 
     updater.start_polling()
