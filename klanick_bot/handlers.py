@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+
 import logging
 import random
 
@@ -8,14 +12,16 @@ import telegram.ext.dispatcher
 from klanick_bot.data_loaders import load_answers, load_todd_etot_sticker_set
 from klanick_bot.utils import invoke_and_join, trim_indent
 
+logger = logging.getLogger(__name__)
+
 
 @telegram.ext.dispatcher.run_async
 def _async_reply(message, replies):
     for reply in replies:
         log_what_calling = f"{reply[0]}({', '.join(repr(x) for x in reply[1:])})"
-        logging.info("Calling %s" % log_what_calling)
+        logger.info("Calling %s" % log_what_calling)
         message.__getattribute__(reply[0])(*reply[1:])
-        logging.info("Finished calling %s" % log_what_calling)
+        logger.info("Finished calling %s" % log_what_calling)
 
 
 def make_message_handler(*reply_functions):
@@ -28,7 +34,7 @@ def make_message_handler(*reply_functions):
 
         replies = invoke_and_join(reply_functions, update, context,
                                   message_text)
-        logging.info(trim_indent(f"""
+        logger.info(trim_indent(f"""
             Message: {message_text}
             Replies: {replies}
         """.rstrip()))

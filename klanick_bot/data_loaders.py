@@ -1,10 +1,15 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+
 import logging
 import time
 
-import telegram.ext.dispatcher
-
 import gspread
+import telegram.ext.dispatcher
 from oauth2client.service_account import ServiceAccountCredentials
+
+logger = logging.getLogger(__name__)
 
 
 def memoized(load_period, log_name=None):
@@ -22,7 +27,7 @@ def memoized(load_period, log_name=None):
         def wait_resouce():
             nonlocal resource, promise
             resource = promise.result()
-            logging.info("Loaded %s" % log_name)
+            logger.info("Loaded %s" % log_name)
             promise = None
 
         def memoized_load(*args, **kwargs):
@@ -36,7 +41,7 @@ def memoized(load_period, log_name=None):
                 if last_load is not None else load_period
 
             if promise is None and since_last_load >= load_period:
-                logging.info("Loading %s" % log_name)
+                logger.info("Loading %s" % log_name)
                 last_load = now
                 promise = load_resource_async(*args, **kwargs)
 
