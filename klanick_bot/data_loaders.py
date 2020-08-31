@@ -1,33 +1,52 @@
 import logging
 import time
 
+import telegram.ext.dispatcher
+
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 
-def memoized(load_period, load_log_message=None):
+def memoized(load_period, log_name=None):
     def wrapper(load_resource):
-        nonlocal load_log_message
+        nonlocal log_name
 
+        if log_name is None:
+            log_name = "resource from function %s" % load_resource.__name__
+
+        load_resource_async = telegram.ext.dispatcher.run_async(load_resource)
         last_load = None
         resource = None
-        if load_log_message is None:
-            load_log_message = f"Invoking memoized function %s" \
-                               % load_resource.__name__
+        promise = None
+
+        def wait_resouce():
+            nonlocal resource, promise
+            resource = promise.result()
+            logging.info("Loaded %s" % log_name)
+            promise = None
 
         def memoized_load(*args, **kwargs):
-            nonlocal last_load, resource
+            nonlocal last_load, resource, promise
+
+            if promise is not None and promise.done.is_set():
+                wait_resouce()
 
             now = time.time()
             since_last_load = now - last_load \
                 if last_load is not None else load_period
 
-            if since_last_load >= load_period:
-                logging.info(load_log_message)
+            if promise is None and since_last_load >= load_period:
+                logging.info("Loading %s" % log_name)
                 last_load = now
-                resource = load_resource(*args, **kwargs)
+                promise = load_resource_async(*args, **kwargs)
+
+            if resource is None:
+                wait_resouce()
+
             return resource
+
         return memoized_load
+
     return wrapper
 
 
@@ -41,15 +60,16 @@ def initialize_sheets_service():
     return gspread.authorize(credentials)
 
 
-@memoized(30, "Loading answers from google spreadsheet")
+@memoized(30, "answers from google spreadsheet")
 def load_answers(gsheets_service, spreadsheet_id):
     return gsheets_service.open_by_key(spreadsheet_id).sheet1.col_values(1)
 
 
 def create_sticker_set_loader(name):
-    @memoized(60, "Loading %s sticker set" % name)
+    @memoized(60, "%s sticker set" % name)
     def load_sticker_set(bot):
         return bot.getStickerSet(name)
+
     return load_sticker_set
 
 

@@ -3,13 +3,13 @@
 
 
 import logging
-import os
 
 import telegram
 import telegram.ext
 
 import klanick_bot.data_loaders
 import klanick_bot.handlers
+import klanick_bot.utils
 
 
 def bot_command(command_handler, comand_name):
@@ -21,7 +21,7 @@ def bot_command(command_handler, comand_name):
 
 
 def help_command(update: telegram.Update, context):
-    update.message.reply_markdown(os.linesep.join(s.lstrip() for s in f"""
+    update.message.reply_markdown(klanick_bot.utils.trim_indent(f"""
         [Код клана](https://github.com/AdvancerMan/klanick-bot)
         [Гугл таблица](https://docs.google.com/spreadsheets/d/{
             context.bot_data["spreadsheet_id"]
@@ -33,7 +33,7 @@ def help_command(update: telegram.Update, context):
         /klan msg -- клан отвечает на сообщение msg
         /random -- клан отвечает рандомной фразой из гугл таблиц
         /sticker -- клан отвечает рандомным стикером из стикерпака "Тодд Этот"
-    """.splitlines()))
+    """))
 
 
 def main():
